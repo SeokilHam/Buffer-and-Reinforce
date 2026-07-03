@@ -7,78 +7,96 @@
 
 > **[Abstract]** Fine-tuning-as-a-Service enables personalization of large language models (LLMs), but it can weaken safety-alignment under harmful fine-tuning attacks. Recent work has shown that activating harmful-behavior modules during fine-tuning can prevent models from learning undesired behaviors, but its mechanism remains unclear. In this paper, we revisit temporary jailbreaking as a defense against harmful fine-tuning and provide a gradient-level analysis showing that it saturates safety-degrading gradients while preserving benign task-relevant gradients. Based on this insight, we propose a **Buffer-and-Reinforce fine-tuning framework** that buffers harmful updates during user fine-tuning and reinforces safety after adaptation. Specifically, BufferLoRA induces temporary jailbreaking as a removable adapter to reduce harmful updates during user fine-tuning. After adaptation, ReinforceLoRA, trained to recover refusal behavior under the temporarily jailbroken state, is integrated with UserLoRA via QR decomposition-based merging to reinforce safety while preserving user-task performance. Extensive experiments show that our framework achieves superior safety and utility with no additional safety data during user fine-tuning and minimal computational cost.
 
+**Authors:** Seokil Ham, Hee-Seon Kim, Sangmin Woo, Changick Kim
 
-## Main code logistic
-We implement a cusomized trainer on top of the original HuggingFace Trainer. To achieve Bi-state optimization,  we append one line of code in function ` training_step()` of `trainer.py`. 
+**Paper:** https://arxiv.org/abs/2411.15224
 
-```
-inputs = self.check_mode(inputs) //Appended code: switch dataset/model according to steps number
-loss = step()  //Gradient backward with the data and model
-```
+## Installation
 
-To introduce a proximal term towards consensus, we need add the following regularization to the loss in function `step()`.
+Requirements:
+- Linux
+- NVIDIA GPU
+- PyTorch 1.12+
+- CUDA 11.6+
 
-```
-if self.status =="alignment":
-  for name, param in model.named_parameters():
-    if param.requires_grad and self.args.rho>0:
-        loss +=  self.args.rho/2* torch.norm( param- self.alignment_weights[name])**2
-else:
-  for name, param in model.named_parameters():
-    if param.requires_grad and self.args.rho>0:
-         loss += self.args.rho/2* torch.norm( param- self.finetune_weights[name])**2
-```
- 
-
-
-
-## Package requirement
-The package requirement is listed in `lisa.yml` and `lisa_pip.txt`. Run the following code to install the packages with anaconda and pip.  
-```
-conda env create -f lisa.yml
-pip install -r lisa_pip.txt
+```sh
+conda create -n ProDiaL python=3.9
+pip install -r requirements.txt
 ```
 
-## Data  preparation
-For finetuning task, we first need to run the following scripts to prepare the sueprvised finetuning data.
+## Usage
+
+#### 1. Set Hyperparameters in ProDiaL
+
+``` python
+CUDA_VISIBLE_DEVICES=0 python train.py \
+    --model_path="state-spaces/mamba-130m" \
+    --tokenizer_path="EleutherAI/gpt-neox-20b" \
+    --instruction_datasets="[hellaswag]" \
+    --output_dir="outputs" \
+    --random_seed=42 \
+    --sequence_max_length=512 \
+    --save_steps=1 \
+    --batch_size=4 \
+    --cache_dir="huggingface" \
+    --num_epochs=21 \
+    --weight_decay=0.01 \
+    --learning_rate=1e-4 \
+    --dropout_rate=0.1 \
+    --logging_steps=100 \
+    --config_path="configs/130m" \
+    --r_b1=768 \
+    --r_b2=1536 \
+    --off_diagonal_rank=16 \
 ```
-cd sst2
-python build_dataset.py
-cd ../gsm8k
-python build_dataset.py
-cd ../ag_news
-python build_dataset.py
-cd ..
+
+#### Run bash file
+
 ```
-
-## Huggingface Llama2 access
-Llama2-7B is a gated repo, which need a formal request to get access to the model. Check out https://huggingface.co/meta-llama/Llama-2-7b-hf.
-After applying permission from meta, you should be able to access the model, but you first need to enter your token in the file `huggingface_token.txt`.
-
-
-
-## Example command to run
-
-We prepare scripts for re-producing all the experiments in the paper. We recommend to use Slurm to reproduce the results as the logging file will be automatically organized into the script directory (if you don't use Slurm, just replace `sbatch` with `bash` in our example).
-
-We first run SFT to produce the aligned model. 
-```
-cd script/alignment
-sbatch  SFT.sh
-```
-Then we finetune the model using 10% of harmful data with a total number of 5000 samples from SST2 dataset. 
-```
-cd ../finetune
-sbatch  lisa_poison_ratio.sh 0.1
+bash train_hellaswag.sh
 ```
 
 
-For comparison, we finetune the model with SFT in the same data setting.
+## Evaluations
+
+```sh
+conda create -n eval_ProDiaL python=3.9
+pip install lm-eval==0.4.2
+pip install causal_conv1d-1.5.0.post8
+pip install mamba-ssm==1.2.0.post1
+```
+
+
+Run evaluation with (more documentation at the [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness/tree/big-refactor) repo):
+``` sh
+python evals/lm_harness_eval.py --model mamba_ssm --tasks hellaswag --device cuda --batch_size 256 --seed 42 --model_args pretrained=state-spaces/mamba-130m
+```
+
+For evaluating multiple checkpoints at once,
+``` sh
+bash eval_hellaswag.sh
+```
+
+
+## Citation
 
 ```
-sbatch  sft_poison_ratio.sh 0.1
-cd ../..
+@article{ham2024parameter,
+  title={Parameter Efficient Mamba Tuning via Projector-targeted Diagonal-centric Linear Transformation},
+  author={Ham, Seokil and Kim, Hee-Seon and Woo, Sangmin and Kim, Changick},
+  journal={arXiv preprint arXiv:2411.15224},
+  year={2024}
+}
 ```
+
+## Reference
+This codebase was partially adapted from the following repositories:
+
+- (https://github.com/state-spaces/mamba) (Apache 2.0 License)
+- (https://github.com/sangHa0411/Llama-Instruction-Tuning) (MIT License)
+
+We thank the authors for open-sourcing their work.
+
 
 
 
