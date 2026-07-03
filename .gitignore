@@ -24,6 +24,8 @@ robust-llama3-8b-instruct
 
 alpaca
 
+*.yml
+
 cache
 
 # Ignore files related to API keys
