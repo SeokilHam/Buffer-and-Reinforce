@@ -1,11 +1,11 @@
 <!-- markdownlint-disable first-line-h1 -->
 <!-- markdownlint-disable html -->
 
-<h1 align="center">Lisa: Lazy Safety Alignment for Large Language Models against Harmful Fine-tuning</h1>
+<h1 align="center">Jailbreak to Protect: Buffering and Reinforcing via Temporary Jailbreaking for Safe Fine-Tuning in Large Language Models</h1>
 
 
 
-Lisa is a safety alignment method against thee threat of harmful fine-tuning. We consider a two-stage fine-tuning scheme: i) Alignment stage, in which we align the model with human-preference dataset (alignment dataset), and ii) finetuning stage, in which we finetune the model with a user finetuning dataset (which is mixed with harmful instance). Lisa is applied in the fine-tuning stage, in which a Bi-state optimization with proximal term is utilized to mitigate the risk of the mixed harmful data.     
+> **[Abstract]** Fine-tuning-as-a-Service enables personalization of large language models (LLMs), but it can weaken safety-alignment under harmful fine-tuning attacks. Recent work has shown that activating harmful-behavior modules during fine-tuning can prevent models from learning undesired behaviors, but its mechanism remains unclear. In this paper, we revisit temporary jailbreaking as a defense against harmful fine-tuning and provide a gradient-level analysis showing that it saturates safety-degrading gradients while preserving benign task-relevant gradients. Based on this insight, we propose a **Buffer-and-Reinforce fine-tuning framework** that buffers harmful updates during user fine-tuning and reinforces safety after adaptation. Specifically, BufferLoRA induces temporary jailbreaking as a removable adapter to reduce harmful updates during user fine-tuning. After adaptation, ReinforceLoRA, trained to recover refusal behavior under the temporarily jailbroken state, is integrated with UserLoRA via QR decomposition-based merging to reinforce safety while preserving user-task performance. Extensive experiments show that our framework achieves superior safety and utility with no additional safety data during user fine-tuning and minimal computational cost.
 
 
 ## Main code logistic
