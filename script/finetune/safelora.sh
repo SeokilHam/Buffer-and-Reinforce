@@ -12,9 +12,9 @@
 
 # source activate hts
 
-poison_ratio=${1:-0.1}
+poison_ratio=${1:-0.5}
 sample_num=1000  
-model_path=${3:-google/gemma-2-9b-it}   
+model_path=${3:-meta-llama/Meta-Llama-3-8B-Instruct}   
 path_after_slash=$(basename "$model_path") 
 echo "The value of poison ratio is: $poison_ratio"
 echo "The value of dense ratio is: $dense_ratio"
@@ -24,12 +24,12 @@ echo "The short model path is: $path_after_slash"
 cd  ../../                            # Change to working directory
 
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 python train.py \
+CUDA_VISIBLE_DEVICES=0 python train.py \
 	--model_name_or_path ${model_path}  \
-	--lora_folder ckpt/gsm8k/${path_after_slash}_sft_f_cosine_${poison_ratio}_${sample_num}_5e-6_3 \
+	--lora_folder ckpt/gsm8k/${path_after_slash}_sft_${poison_ratio}_${sample_num}_${lr}_${ep} \
 	--data_path PKU-Alignment/BeaverTails_dangerous \
 	--bf16 True \
-	--output_dir ckpt/gsm8k/${path_after_slash}_safelora_f_${poison_ratio}_${sample_num} \
+	--output_dir ckpt/gsm8k/${path_after_slash}_safelora_${poison_ratio}_${sample_num} \
 	--num_train_epochs 0 \
 	--per_device_train_batch_size 1 \
 	--per_device_eval_batch_size 1 \
@@ -48,26 +48,27 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 python train.py \
 	--poison_ratio 1 \
 	--sample_num 1000 \
 	--benign_dataset data/gsm8k.json \
-	--alternating "single_lora"
+	--alternating "single_lora" \
+	--seed 42
 
 cd poison/evaluation  
 
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 python pred.py \
-	--lora_folder ../../ckpt/gsm8k/${path_after_slash}_safelora_f_${poison_ratio}_${sample_num} \
+CUDA_VISIBLE_DEVICES=0 python pred.py \
+	--lora_folder ckpt/gsm8k/${path_after_slash}_safelora_${poison_ratio}_${sample_num} \
 	--model_folder ${model_path} \
-	--output_path ../../data/poison/gsm8k/${path_after_slash}_safelora_f_${poison_ratio}_${sample_num}
+	--output_path ckpt/gsm8k/${path_after_slash}_safelora_${poison_ratio}_${sample_num}/pred.json
 
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 python eval_sentiment.py \
-	--input_path ../../data/poison/gsm8k/${path_after_slash}_safelora_f_${poison_ratio}_${sample_num}
+CUDA_VISIBLE_DEVICES=0 python eval_sentiment.py \
+	--input_path ckpt/gsm8k/${path_after_slash}_safelora_${poison_ratio}_${sample_num}/pred.json
 
 
 
 cd ../../gsm8k
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 python pred_eval.py   \
-	--lora_folder ../ckpt/gsm8k/${path_after_slash}_safelora_f_${poison_ratio}_${sample_num} \
+CUDA_VISIBLE_DEVICES=0 python pred_eval.py   \
+	--lora_folder ckpt/gsm8k/${path_after_slash}_safelora_${poison_ratio}_${sample_num} \
 	--model_folder ${model_path} \
-	--output_path ../data/gsm8k/${path_after_slash}_safelora_f_${poison_ratio}_${sample_num}
+	--output_path ckpt/gsm8k/${path_after_slash}_safelora_${poison_ratio}_${sample_num}/pred_gsm8k.json
 	

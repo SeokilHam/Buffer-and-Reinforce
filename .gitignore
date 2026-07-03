@@ -93,6 +93,15 @@ layerwise_safelora_analysis.py
 project_user_to_safetylora.py
 projection_analysis.py
 
+poison/evaluation/pred2.py
+poison/evaluation/pred_autodan.py
+poison/evaluation/pred_backdoor.py
+poison/evaluation/pred_gcg.py
+poison/evaluation/pred_gptcipher.py
+poison/evaluation/pred_gptfuzzer.py
+poison/evaluation/pred_pair.py
+poison/evaluation/pred_tap.py
+
 loss_func
 draw_fig
 

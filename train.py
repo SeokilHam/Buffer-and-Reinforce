@@ -27,7 +27,7 @@ import transformers
 from transformers import TrainerCallback, get_cosine_schedule_with_warmup
 # from torch.utils.data import Dataset
 from datasets import Dataset
-from trainer import BaseTrainer,ADMMTrainer,RepNoiseTrainer,LDIFSTrainer,VlguardTrainer,BoosterAlignmentTrainer,BufferLoRATrainer,AntidoteTrainer,AsFTTrainer,Panacea,SafeLoRA,SafeLoRAConfig,SALoRATrainer,SecurityVectorTrainer
+from trainer import LisaTrainer,LDIFSTrainer,AntidoteTrainer,AsFTTrainer,Panacea,SafeLoRA,SafeLoRAConfig,SecurityVectorTrainer
 from peft import LoraConfig, get_peft_model, PeftModel, get_peft_model_state_dict
 from tqdm import tqdm
 import json
@@ -204,14 +204,8 @@ def train():
     parser.add_argument("--meta_term",  type=str, default="True", help="Specify the optimizer to use")
     parser.add_argument("--full_finetuning",  type=str, default="False", help="Specify the optimizer to use")
 
-    # for SafeMoE
-    parser.add_argument("--routing_logits_safe",  type=str, default="router_logits_refusal.json", help="Specify the optimizer to use")
-    parser.add_argument("--temp",  type=float, default=0.1, help="Specify the optimizer to use")
-    parser.add_argument("--topk",  type=int, default=None, help="Specify the optimizer to use")
-    parser.add_argument("--SignPEFT",  type=bool, default=False, help="Specify the optimizer to use")
-    parser.add_argument("--beta_max",  type=float, default=0.1, help="Specify the optimizer to use")
+    # Security Vector
     parser.add_argument("--regul_lambda",  type=float, default=1, help="Specify the optimizer to use")
-    parser.add_argument("--projection_path",  type=str, default="", help="Specify the optimizer to use")
 
     # Panacea
     parser.add_argument("--eps_rho",  type=float, default=1, help="Specify the optimizer to use")
@@ -274,25 +268,11 @@ def train():
     training_args.warmup_ratio = args.warmup_ratio
     # training_args.warmup_steps = args.warmup_steps
 
-    # if "gemma" in model_args.model_name_or_path or "Mistral" in model_args.model_name_or_path:
-    #     # to prevent oom
-    #     training_args.model_max_length=180
-
     training_args. perturb_aware = extra_args.perturb_aware
-    # if data_args.benign_dataset== "data/alpaca.json":
-    #     # to prevent oom
-    #     training_args.model_max_length=512
     
-    # if extra_args.optimizer== "vlguard" or extra_args.optimizer== "united" or extra_args.optimizer== "unitedAlignment" or extra_args.optimizer== "smoothAlignment" :
-    #     # to prevent oom
-    #     training_args.model_max_length=256
-    
-    if extra_args.optimizer== "rep_noise" or extra_args.optimizer== "LDIFS":
+    if extra_args.optimizer== "LDIFS":
         # to prevent oom
         training_args.model_max_length=256
-    # if (extra_args.optimizer== "rep_noise" or extra_args.optimizer== "LDIFS" ) and "gemma" in model_args.model_name_or_path:
-    #     # to prevent oom
-    #     training_args.model_max_length=180
         
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
@@ -315,11 +295,6 @@ def train():
     
     # Enable BF16 precision
     model = model.to(torch.bfloat16)
-    # for name, param in model.named_parameters():
-    #     print(f"Name: {name}")
-    #     print(f"Tensor Type: {param.data.type()}")
-    #     print(f"Shape: {param.data.shape}")
-    
     
     special_tokens_dict = dict()
     if tokenizer.pad_token is None:
@@ -346,9 +321,7 @@ def train():
 
     base_model = copy.deepcopy(model)
     
-    loar_alpha=64
-    # loar_alpha=32
-            
+    loar_alpha=64            
     if extra_args.lora_folder!="":
         print("Recover LoRA weights..")
         model = PeftModel.from_pretrained(
@@ -363,9 +336,7 @@ def train():
             if extra_args.lora_folder2=="":
                 # create new second lora for training 
                 config = LoraConfig(
-                    # r=16,
                     r=32,
-                    # r=8,
                     lora_alpha=loar_alpha,
                     target_modules=["q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
                     bias="none",
@@ -382,295 +353,96 @@ def train():
                 is_trainable=True
                 )
                 
-                
-                
                 print(model.peft_config)  
-                # import torch.nn as nn
-                # def replace_dropout(module):
-                #     for name, child_module in module.named_children():
-                #         # print(name)
-                #         if isinstance(child_module, nn.Dropout) or isinstance(child_module, nn.Identity):
-                #             setattr(module, name, nn.Dropout(p=0))  # Example dropout rate, you can adjust as needed
-                #         else:
-                #             replace_dropout(child_module)
-                # # Assuming 'model' is your original model instance
-                # replace_dropout(model)
     else:
         # create first lora
         print("Initialize Lora weights..")
         config = LoraConfig(
-        # r=8,
-        # r=16,
-        r=32,
-        lora_alpha=loar_alpha,
-        target_modules=["q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
-        # target_modules=["q_proj", "v_proj"],
-        bias="none",
-        lora_dropout=0.1,
-        task_type="CAUSAL_LM",
-        init_lora_weights=False if training_args.optimizer == "salora" else True,  # SALoRA는 PiSSA initialization 사용
+            r=32,
+            lora_alpha=loar_alpha,
+            target_modules=["q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
+            bias="none",
+            lora_dropout=0.1,
+            task_type="CAUSAL_LM",
+            init_lora_weights=True
         )
-        # SALoRA의 경우 get_peft_model()은 init() 내부에서 호출됨 (원본 코드 순서 유지)
-        if training_args.optimizer != "salora":
-            # initialize the model with the LoRA framework
-            model = get_peft_model(model, config)
-        # norm = 0
-        # for name, param in model.named_parameters():
-        #     if 'lora' in name and ("q_proj" in name or "k_proj" in name) :
-        #         param.requires_grad = True
-        #     else:
-        #         param.requires_grad = False
-        #     if param.requires_grad:
-        #         print(name)
-    
-        # norm = 0
-        # for name, param in model.named_parameters():
-        #     if "lora" in name:
-        #         norm+= torch.norm(param).clone()
-    # print("weights norm{}".format(norm))
-    # model.config.use_cache = False
-    model.train()
-    # for name, module in model.named_modules():
-    #     if "lora" in name and "v_proj" in name and len(list(module.children()))==0 and isinstance(module, torch.nn.Linear):
-    #         module.weight.data += 1e-7
-    #         torch.nn.utils.parametrizations.spectral_norm(module, n_power_iterations=1)
-    # import torch.optim as optim
-    # from torch.optim.lr_scheduler import StepLR
-    # optimizer = optim.AdamW(
-    #         filter(lambda p: p.requires_grad, model.parameters()),
-    #         lr=args.learning_rate,
-    #         weight_decay=args.weight_decay,
-    #     )
-    # lr_scheduler = StepLR(optimizer, step_size=1, gamma=0.85)
-
-    # print(model)
-    # print(model.print_trainable_parameters())
-    # print(model)
-    # print(model.print_trainable_parameters())
-    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args, training_args=training_args)
-    if training_args.optimizer=="vaccine":
-        print("init vaccine")
-        import torch.optim as optim
-        trainer = BaseTrainer(model=model, tokenizer=tokenizer, args=training_args,**data_module)
-    elif training_args.optimizer=="rep_noise":
-        import torch.optim as optim
-        trainer = RepNoiseTrainer(model=model, tokenizer=tokenizer, args=training_args,**data_module)
-        harmful_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="LAT_harm", poison_ratio=1,sample_num=5000,benign_dataset=data_args.benign_dataset,poison_data_start=0)
-        # standard_dataset = SupervisedDataset(tokenizer=tokenizer,  data_path="BeaverTails_safe", sample_num=5000,poison_data_start=5000)
-        trainer.init(harmful_dataset)
         
-    elif "EWC" in training_args.optimizer:
-        import torch.optim as optim
-        trainer = FITrainer(model=model, tokenizer=tokenizer, args=training_args,**data_module)
-        trainer.init(model)
-    elif training_args.optimizer == "random_vaccine":
-        trainer = RandomVaccineTrainer(model=model, tokenizer=tokenizer, args=training_args,**data_module)
+        model = get_peft_model(model, config)
+        
+    model.train()
+    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args, training_args=training_args)
     elif training_args.optimizer == "lisa":
-        trainer = ADMMTrainer(model=model, tokenizer=tokenizer, args=training_args,**data_module)
+        trainer = LisaTrainer(model=model, tokenizer=tokenizer, args=training_args,**data_module)
         alignment_dataset  = SupervisedDataset(tokenizer=tokenizer, data_path="LAT_safe",sample_num=data_args.guide_data_num, poison_data_start=0, poison_ratio=1)
         trainer.init(alignment_dataset)
-    elif training_args.optimizer == "vlguard":
-        alignment_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="BeaverTails_safe",sample_num=data_args.good_sample_num, benign_dataset=data_args.benign_dataset)
-        trainer = VlguardTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
-        trainer.init(alignment_dataset)
-    elif training_args.optimizer == "united":
-        harmful_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="BeaverTails_dangerous", poison_ratio=1,sample_num=data_args.bad_sample_num,benign_dataset=data_args.benign_dataset,poison_data_start=5000)
-        trainer = UnitedTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
-        trainer.init(harmful_dataset)
-    elif training_args.optimizer == "unitedAlignment":
-        harmful_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="BeaverTails_dangerous", poison_ratio=1,sample_num=data_args.bad_sample_num,benign_dataset=data_args.benign_dataset,poison_data_start=5000)
-        trainer = UnitedAlignmentTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
-        trainer.init(harmful_dataset)
     elif training_args.optimizer == "panacea":
         harmful_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="LAT_harm", poison_ratio=1,sample_num=data_args.bad_sample_num,benign_dataset=data_args.benign_dataset,poison_data_start=0)
         trainer = Panacea(model=model, tokenizer=tokenizer, args=training_args ,**data_module)
         trainer.init(harmful_dataset, model, "eps")
-    elif training_args.optimizer == "booster":
-        harmful_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="LAT_harm", poison_ratio=1,sample_num=data_args.bad_sample_num,benign_dataset=data_args.benign_dataset,poison_data_start=0)
-        trainer = BoosterAlignmentTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module)
-        trainer.init(harmful_dataset)
-    elif training_args.optimizer == "undercover":
-        trainer = UndercoverTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
-        trainer.init(training_args.dense_ratio)
-    elif training_args.optimizer == "prune_afterfinetune":
-        trainer = UndercoverTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
-        trainer.init(training_args.dense_ratio)
-    elif training_args.optimizer == "undercover_sft":
-        trainer = UndercoverTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
-        trainer.init(training_args.dense_ratio)
     elif training_args.optimizer == "LDIFS":
         trainer = LDIFSTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
         trainer.init(model)
-    elif training_args.optimizer == "salora":
-        # SALoRA: harmful_dataset을 사용하여 LoRA 초기화 (Booster와 동일)
-        # model은 일반 모델 (get_peft_model()은 SALoRATrainer.init() 내부에서 호출됨)
-        harmful_dataset = SupervisedDataset(
-            tokenizer=tokenizer,
-            data_path="BeaverTails_dangerous", 
-            poison_ratio=1,
-            sample_num=data_args.bad_sample_num,
-            benign_dataset=data_args.benign_dataset,
-            poison_data_start=5000
-        )
-        safe_dataset = SupervisedDataset(
-            tokenizer=tokenizer,
-            data_path="LAT_safe", 
-            poison_ratio=0,
-            sample_num=data_args.bad_sample_num,
-            benign_dataset=data_args.benign_dataset,
-            poison_data_start=0
-        )
-        trainer = SALoRATrainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
-        # init()에서 LoRA 초기화까지 모두 수행 (LoraConfig를 전달)
-        if training_args.system_evaluate =="True":
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-        trainer.init(
-            harmful_dataset=harmful_dataset,
-            tokenizer=tokenizer,
-            safe_dataset=safe_dataset,  # None이면 harmful_dataset과 동일하게 사용 (테스트용)
-            peft_config=config,  # train.py에서 생성한 LoraConfig 전달
-            rs=None,  # None이면 rank와 동일하게 설정
-            ds=None,  # None이면 rank와 동일하게 설정
-            n_iter=30,
-            seqlen=4096
-            # modelname은 자동으로 모델 config에서 감지됨
-            # set_lora_weights_from_salora()는 init() 내부에서 자동으로 호출됨
-        )
-        if  training_args.system_evaluate =="True":
-            end_event.record()
-            torch.cuda.synchronize()
-            ont_shot_time = start_event.elapsed_time(end_event)
-            print("Estimated one shot time {} (h)".format(ont_shot_time/ 1000/3600))
-            memory_usage = torch.cuda.memory_reserved()
-            print(f"Memory usage: { memory_usage/ (1024 ** 3):.2f} GB GPU memory used")
-    elif training_args.optimizer == "undercover_vaccine":
-        trainer = BaseTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
-        trainer.init(training_args.dense_ratio) 
     elif training_args.optimizer == "security_vector":
         harmless_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="LAT_safe", poison_ratio=0, sample_num=data_args.bad_sample_num,benign_dataset=data_args.benign_dataset,poison_data_start=0)
         trainer = SecurityVectorTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module)
         trainer.init(harmless_dataset, base_model)
-    elif training_args.optimizer == "bufferlora":
-        # harmless_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="LAT_harm", poison_ratio=0,sample_num=data_args.sample_num,benign_dataset=data_args.benign_dataset,poison_data_start=5000)
-        # print("Load ", extra_args.lora_folder)
-        # bufferlora_dict = torch.load(extra_args.lora_folder + "/adapter_model.bin", map_location="cpu")
-        
-        trainer = BufferLoRATrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module)
-        # trainer.init(args.regul_lambda, bufferlora_dict)
-        trainer.init(args.regul_lambda)
     elif training_args.optimizer == "asft":
-        # if training_args.system_evaluate =="True":
-        #     start_event = torch.cuda.Event(enable_timing=True)
-        #     end_event = torch.cuda.Event(enable_timing=True)
-        #     start_event.record()
-        # class SafeLoRA:
-        #     def __init__(self):
-        #         super().__init__()
+        if training_args.system_evaluate =="True":
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+        class SafeLoRA:
+            def __init__(self):
+                super().__init__()
                 
-        #         self.base_model = transformers.AutoModelForCausalLM.from_pretrained(
-        #             "meta-llama/Meta-Llama-3-8B",
-        #             return_dict=True,
-        #             load_in_8bit=False,
-        #             device_map="cpu",
-        #             low_cpu_mem_usage=True,
-        #             cache_dir=training_args.cache_dir,
-        #         )
-        #         self.aligned_model = transformers.AutoModelForCausalLM.from_pretrained(
-        #             "meta-llama/Meta-Llama-3-8B-Instruct",
-        #             return_dict=True,
-        #             load_in_8bit=False,
-        #             device_map="cpu",
-        #             low_cpu_mem_usage=True,
-        #             cache_dir=training_args.cache_dir,
-        #         )
-        #         self.project_matrix = self.get_aligned_matrix()
+                self.base_model = transformers.AutoModelForCausalLM.from_pretrained(
+                    "meta-llama/Meta-Llama-3-8B",
+                    return_dict=True,
+                    load_in_8bit=False,
+                    device_map="cpu",
+                    low_cpu_mem_usage=True,
+                    cache_dir=training_args.cache_dir,
+                )
+                self.aligned_model = transformers.AutoModelForCausalLM.from_pretrained(
+                    "meta-llama/Meta-Llama-3-8B-Instruct",
+                    return_dict=True,
+                    load_in_8bit=False,
+                    device_map="cpu",
+                    low_cpu_mem_usage=True,
+                    cache_dir=training_args.cache_dir,
+                )
+                self.project_matrix = self.get_aligned_matrix()
 
-        #     def get_aligned_matrix(self):
-        #         v = []
-        #         proj_modules = ["q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"]
-        #         for (b_name, b_param), (a_name, a_param) in zip(self.base_model.named_parameters(), self.aligned_model.named_parameters()):
-        #             if any(module in a_name for module in proj_modules):
-        #                 vec = a_param - b_param
-        #                 vec = vec.to("cuda")
-        #                 vec = torch.mm(vec, vec.t()) / torch.norm(vec)
-        #                 v.append(vec.detach().cpu())
-        #         return v
+            def get_aligned_matrix(self):
+                v = []
+                proj_modules = ["q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"]
+                for (b_name, b_param), (a_name, a_param) in zip(self.base_model.named_parameters(), self.aligned_model.named_parameters()):
+                    if any(module in a_name for module in proj_modules):
+                        vec = a_param - b_param
+                        vec = vec.to("cuda")
+                        vec = torch.mm(vec, vec.t()) / torch.norm(vec)
+                        v.append(vec.detach().cpu())
+                return v
         
-        # safelora = SafeLoRA()
-        # project_matrix = safelora.get_aligned_matrix()
-        # if  training_args.system_evaluate =="True":
-        #     end_event.record()
-        #     torch.cuda.synchronize()
-        #     ont_shot_time = start_event.elapsed_time(end_event)
-        #     print("Estimated one shot time {} (h)".format(ont_shot_time/ 1000/3600))
-        #     memory_usage = torch.cuda.memory_reserved()
-        #     print(f"Memory usage: { memory_usage/ (1024 ** 3):.2f} GB GPU memory used")
-        # torch.save(project_matrix, "/mnt/server8_hard3/seokil/safety_vector_gemma2_9b.pt")
-        # import pdb; pdb.set_trace()
-        # project_matrix = torch.load("asft_project_matrix.pt")
-        project_matrix = torch.load("/mnt/server12_hard3/seokil/Booster/asft_project_matrix.pt")
+        safelora = SafeLoRA()
+        project_matrix = safelora.get_aligned_matrix()
+        if  training_args.system_evaluate =="True":
+            end_event.record()
+            torch.cuda.synchronize()
+            one_shot_time = start_event.elapsed_time(end_event)
+            print("Estimated one shot time {} (h)".format(one_shot_time/ 1000/3600))
+            memory_usage = torch.cuda.memory_reserved()
+            print(f"Memory usage: { memory_usage/ (1024 ** 3):.2f} GB GPU memory used")
         trainer = AsFTTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module)
         trainer.init(args.regul_lambda, project_matrix)
     elif training_args.optimizer == "SafeInstruct":
-        harmful_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="BeaverTails_safe", poison_ratio=1,sample_num=int(data_args.sample_num*0.1),poison_data_start=5000)
+        harmful_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="LAT_safe", poison_ratio=1,sample_num=int(data_args.sample_num*0.1),poison_data_start=5000)
         data_module["train_dataset"] = data_module["train_dataset"] + harmful_dataset
         trainer = transformers.Trainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module)
     elif training_args.optimizer == "antidote":
         trainer = AntidoteTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
         trainer.init(training_args.dense_ratio, data_args.sample_num)
     else:
-        # def attach_lora_projection_hooks_with_activation(peft_model):
-        #     attached = []
-        #     for name, module in peft_model.named_modules():
-        #         # LoRA 대상 모듈만 처리
-        #         if not (hasattr(module, "lora_A") and hasattr(module, "lora_B")):
-        #             continue
-                
-        #         # import pdb; pdb.set_trace()
-        #         # LoRA A, B 그라디언트 훅
-        #         A = module.lora_A.default.weight   # [r, d_in]
-        #         B = module.lora_B.default.weight   # [d_out, r]
-
-        #         def A_hook(grad, name_module=name, module=module):
-        #             print("LoRA A")
-        #             print(name_module)
-        #             print(grad.norm())
-
-        #             match = re.search(r"layers\.(\d+)\.", name_module)
-        #             layer_idx = int(match.group(1)) if match else None
-                    
-        #             module_name = None
-        #             for target in ["q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"]:
-        #                 if target in name_module:
-        #                     module_name = target
-        #                     break
-
-        #             A_grad_norm[module_name][layer_idx] += grad.norm().item() / len(data_module["train_dataset"])
-
-        #         def B_hook(grad, name_module=name, module=module):
-        #             print("LoRA B")
-        #             print(name_module)
-        #             print(grad.norm())
-
-        #             match = re.search(r"layers\.(\d+)\.", name_module)
-        #             layer_idx = int(match.group(1)) if match else None
-                    
-        #             module_name = None
-        #             for target in ["q_proj", "v_proj", "gate_proj", "up_proj", "down_proj"]:
-        #                 if target in name_module:
-        #                     module_name = target
-        #                     break
-
-        #             B_grad_norm[module_name][layer_idx] += grad.norm().item() / len(data_module["train_dataset"])
-
-        #         A.register_hook(A_hook)
-        #         B.register_hook(B_hook)
-        #         attached.append(name)
-        #     print(f"[LoRA] hooks attached on {len(attached)} modules")
-        
-        # attach_lora_projection_hooks_with_activation(peft_model=model)
         trainer = transformers.Trainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) # , optimizers=(optimizer, lr_scheduler)
    
         
@@ -703,9 +475,7 @@ def train():
             self.total_time += step_time
             self.record_time +=1
             if self.record_time%1==0:
-                # print(f"Step {state.global_step}: {self.average_statistic*self.record_time / 1000:.2f} seconds (GPU time)")
                 print("Estimated total time {} (h)".format(self.average_statistic*total_steps/ 1000/3600))
-                # wandb.log({"Cost/Average Time per step (s)": self.average_statistic/1000})
                 wandb.log({"Cost/total time (h)": self.total_time/1000/3600})
 
         
@@ -725,7 +495,6 @@ def train():
             num_gpus = torch.cuda.device_count()
             
             for i in range(num_gpus):
-                # torch.cuda.memory_reserved(i)는 i번 GPU의 할당된 메모리를 가져옵니다.
                 total_memory += torch.cuda.memory_reserved(i)
                 max_memory = max(max_memory, torch.cuda.max_memory_allocated(i))
                 
@@ -822,16 +591,6 @@ def train():
     if training_args.num_train_epochs>0:
         trainer.train()
 
-        # print("LoRA A")
-        # for key, values in A_grad_norm.items():
-        #     for layer_idx, value in enumerate(values):
-        #         print(key + " layer " + str(layer_idx) + ": " + str(value))
-
-        # print("LoRA B")
-        # for key, values in B_grad_norm.items():
-        #     for layer_idx, value in enumerate(values):
-        #         print(key + " layer " + str(layer_idx) + ": " + str(value))
-        
     if training_args.optimizer == "admm":
         trainer.end_training()
     

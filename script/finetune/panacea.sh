@@ -19,7 +19,7 @@ lamb=0.0001
 bad_sample_num=1000
 tag="eps"
 sample_num=1000
-model_path=${3:-google/gemma-2-9b-it}   
+model_path=${3:-meta-llama/Meta-Llama-3-8B-Instruct}   
 path_after_slash=$(basename "$model_path") 
 echo "The value of poison ratio is: $poison_ratio"
 echo "The value of dense ratio is: $dense_ratio"
@@ -29,44 +29,15 @@ echo "The short model path is: $path_after_slash"
 cd  ../../                            # Change to working directory
 
 
-# CUDA_VISIBLE_DEVICES=1,2 python train.py \
-# 	--model_name_or_path ${model_path}\
-# 	--lora_folder ckpt/${path_after_slash}_sft  \
-# 	--data_path PKU-Alignment/BeaverTails_dangerous \
-# 	--bf16 True \
-# 	--output_dir ckpt/gsm8k/${path_after_slash}_sft_f_${poison_ratio}_${sample_num} \
-# 	--num_train_epochs 20 \
-# 	--per_device_train_batch_size 5 \
-# 	--per_device_eval_batch_size 5 \
-# 	--gradient_accumulation_steps 1 \
-# 	--save_strategy "steps" \
-# 	--save_steps 100000 \
-# 	--save_total_limit 0 \
-# 	--learning_rate 1e-4 \
-# 	--weight_decay 0.1 \
-# 	--warmup_ratio 0.1 \
-# 	--lr_scheduler_type "constant" \
-# 	--logging_steps 10 \
-# 	--tf32 True \
-# 	--eval_steps 10000 \
-# 	--cache_dir cache \
-# 	--optimizer normal \
-# 	--evaluation_strategy  "steps" \
-# 	--sample_num $sample_num \
-# 	--poison_ratio ${poison_ratio} \
-# 	--label_smoothing_factor  0 \
-# 	--benign_dataset data/gsm8k.json \
-
-
-CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py \
+CUDA_VISIBLE_DEVICES=0 python train.py \
 	--model_name_or_path ${model_path}  \
 	--data_path PKU-Alignment/BeaverTails_dangerous \
 	--bf16 True \
-	--output_dir ckpt/gsm8k/${path_after_slash}_panacea_f_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num} \
+	--output_dir ckpt/gsm8k/${path_after_slash}_panacea_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num} \
 	--num_train_epochs 3 \
-	--per_device_train_batch_size 2 \
-	--per_device_eval_batch_size 2 \
-	--gradient_accumulation_steps 4 \
+	--per_device_train_batch_size 8 \
+	--per_device_eval_batch_size 8 \
+	--gradient_accumulation_steps 1 \
 	--save_strategy "steps" \
 	--save_steps 100000 \
 	--save_total_limit 0 \
@@ -88,25 +59,26 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 python train.py \
 	--alternating single_lora \
 	--benign_dataset data/gsm8k.json \
 	--tag ${tag} \
+	--seed 42
 
 cd poison/evaluation  
 
 
-CUDA_VISIBLE_DEVICES=0,1 python pred.py \
-	--lora_folder ../../ckpt/gsm8k/${path_after_slash}_panacea_f_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num} \
+CUDA_VISIBLE_DEVICES=0 python pred.py \
+	--lora_folder ckpt/gsm8k/${path_after_slash}_panacea_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num} \
 	--model_folder ${model_path} \
-	--output_path ../../data/poison/gsm8k/${path_after_slash}_panacea_f_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num}
+	--output_path ckpt/gsm8k/${path_after_slash}_panacea_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num}/pred.json
 
 
-CUDA_VISIBLE_DEVICES=0,1 python eval_sentiment.py \
-	--input_path ../../data/poison/gsm8k/${path_after_slash}_panacea_f_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num}
+CUDA_VISIBLE_DEVICES=0 python eval_sentiment.py \
+	--input_path ckpt/gsm8k/${path_after_slash}_panacea_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num}/pred.json
 
 
 
 cd ../../gsm8k
 
-CUDA_VISIBLE_DEVICES=0,1 python pred_eval.py   \
-	--lora_folder ../ckpt/gsm8k/${path_after_slash}_panacea_f_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num} \
+CUDA_VISIBLE_DEVICES=0 python pred_eval.py   \
+	--lora_folder ckpt/gsm8k/${path_after_slash}_panacea_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num} \
 	--model_folder ${model_path} \
-	--output_path ../data/gsm8k/${path_after_slash}_panacea_f_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num}
+	--output_path ckpt/gsm8k/${path_after_slash}_panacea_${dense_ratio}_${poison_ratio}_${sample_num}_${bad_sample_num}/pred_gsm8k.json
 	

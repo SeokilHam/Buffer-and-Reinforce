@@ -29,7 +29,7 @@ CUDA_VISIBLE_DEVICES=0 python train.py \
 	--model_name_or_path ${model_path}\
 	--data_path PKU-Alignment/BeaverTails_dangerous \
 	--bf16 True \
-	--output_dir ckpt/gsm8k/${path_after_slash}_asft_${poison_ratio}_${sample_num}_${lr}_${ep} \
+	--output_dir ckpt/gsm8k/${path_after_slash}_sft_${poison_ratio}_${sample_num}_${lr}_${ep} \
 	--num_train_epochs ${ep} \
 	--per_device_train_batch_size 8 \
 	--per_device_eval_batch_size 8 \
@@ -45,35 +45,35 @@ CUDA_VISIBLE_DEVICES=0 python train.py \
 	--tf32 True \
 	--eval_steps 2000 \
 	--cache_dir cache \
-	--optimizer asft \
+	--optimizer normal \
 	--sample_num $sample_num \
 	--poison_ratio ${poison_ratio} \
 	--poison_data_start 0 \
 	--label_smoothing_factor  0 \
 	--benign_dataset data/gsm8k.json \
 	--seed 42 \
-	--regul_lambda 10 \
-	--system_evaluate "True"
-
+	# --system_evaluate "True"
 
 cd poison/evaluation  
 
 
 
+
+
 CUDA_VISIBLE_DEVICES=0 python pred.py \
-	--lora_folder ckpt/gsm8k/${path_after_slash}_asft_${poison_ratio}_${sample_num}_${lr}_${ep} \
+	--lora_folder ckpt/gsm8k/${path_after_slash}_sft_${poison_ratio}_${sample_num}_${lr}_${ep} \
 	--model_folder ${model_path} \
-	--output_path ckpt/gsm8k/${path_after_slash}_asft_${poison_ratio}_${sample_num}_${lr}_${ep}/pred.json
+	--output_path ckpt/gsm8k/${path_after_slash}_sft_${poison_ratio}_${sample_num}_${lr}_${ep}/pred.json
 
 
 CUDA_VISIBLE_DEVICES=0 python eval_sentiment.py \
-	--input_path ckpt/gsm8k/${path_after_slash}_asft_${poison_ratio}_${sample_num}_${lr}_${ep}/pred.json
+	--input_path ckpt/gsm8k/${path_after_slash}_sft_${poison_ratio}_${sample_num}_${lr}_${ep}/pred.json
 
 
 
 cd ../../gsm8k
 
 CUDA_VISIBLE_DEVICES=0 python pred_eval.py   \
-	--lora_folder ckpt/gsm8k/${path_after_slash}_asft_${poison_ratio}_${sample_num}_${lr}_${ep} \
+	--lora_folder ckpt/gsm8k/${path_after_slash}_sft_${poison_ratio}_${sample_num}_${lr}_${ep} \
 	--model_folder ${model_path} \
-	--output_path ckpt/gsm8k/${path_after_slash}_asft_${poison_ratio}_${sample_num}_${lr}_${ep}/pred_gsm8k.json
+	--output_path ckpt/gsm8k/${path_after_slash}_sft_${poison_ratio}_${sample_num}_${lr}_${ep}/pred_gsm8k.json
