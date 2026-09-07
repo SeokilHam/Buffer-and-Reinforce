@@ -5,7 +5,7 @@
 
 **Authors:** Seokil Ham, Jaehyuk Jang, Wonjun Lee, Changick Kim
 
-**Affiliation:** School of Electrical Engineering, **KAIST**, Daejeon, Republic of Korea
+**Affiliation:** KAIST, Republic of Korea
 
 **Paper:** [https://arxiv.org/abs/2411.15224](https://arxiv.org/abs/2605.24550)
 
