@@ -5,6 +5,9 @@
 
 **Authors:** Seokil Ham, Jaehyuk Jang, Wonjun Lee, Changick Kim
 
+**Affiliation:** School of Electrical Engineering, Korea Advanced Institute
+of Science and Technology (KAIST), Daejeon, Republic of Korea
+
 **Paper:** [https://arxiv.org/abs/2411.15224](https://arxiv.org/abs/2605.24550)
 
 > **[Abstract]** Fine-tuning-as-a-Service enables personalization of large language models (LLMs), but it can weaken safety-alignment under harmful fine-tuning attacks. Recent work has shown that activating harmful-behavior modules during fine-tuning can prevent models from learning undesired behaviors, but its mechanism remains unclear. In this paper, we revisit temporary jailbreaking as a defense against harmful fine-tuning and provide a gradient-level analysis showing that it saturates safety-degrading gradients while preserving benign task-relevant gradients. Based on this insight, we propose a **Buffer-and-Reinforce fine-tuning framework** that buffers harmful updates during user fine-tuning and reinforces safety after adaptation. Specifically, BufferLoRA induces temporary jailbreaking as a removable adapter to reduce harmful updates during user fine-tuning. After adaptation, ReinforceLoRA, trained to recover refusal behavior under the temporarily jailbroken state, is integrated with UserLoRA via QR decomposition-based merging to reinforce safety while preserving user-task performance. Extensive experiments show that our framework achieves superior safety and utility with no additional safety data during user fine-tuning and minimal computational cost.
