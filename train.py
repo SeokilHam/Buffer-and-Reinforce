@@ -371,7 +371,7 @@ def train():
         
     model.train()
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args, training_args=training_args)
-    elif training_args.optimizer == "lisa":
+    if training_args.optimizer == "lisa":
         trainer = LisaTrainer(model=model, tokenizer=tokenizer, args=training_args,**data_module)
         alignment_dataset  = SupervisedDataset(tokenizer=tokenizer, data_path="LAT_safe",sample_num=data_args.guide_data_num, poison_data_start=0, poison_ratio=1)
         trainer.init(alignment_dataset)
