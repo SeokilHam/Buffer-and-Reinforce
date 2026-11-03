@@ -27,7 +27,7 @@ import transformers
 from transformers import TrainerCallback, get_cosine_schedule_with_warmup
 # from torch.utils.data import Dataset
 from datasets import Dataset
-from trainer import LisaTrainer,LDIFSTrainer,AntidoteTrainer,AsFTTrainer,Panacea,SafeLoRA,SafeLoRAConfig,SecurityVectorTrainer
+from trainer import LisaTrainer,LDIFSTrainer,AntidoteTrainer,AsFTTrainer,SafeLoRA,SafeLoRAConfig,SecurityVectorTrainer
 from peft import LoraConfig, get_peft_model, PeftModel, get_peft_model_state_dict
 from tqdm import tqdm
 import json
@@ -206,12 +206,7 @@ def train():
 
     # Security Vector
     parser.add_argument("--regul_lambda",  type=float, default=1, help="Specify the optimizer to use")
-
-    # Panacea
-    parser.add_argument("--eps_rho",  type=float, default=1, help="Specify the optimizer to use")
-    parser.add_argument("--tag",  type=str, default="", help="Specify the optimizer to use")
-    parser.add_argument("--add_eps",  type=bool, default=True, help="Specify the optimizer to use")
-    
+ 
     model_args, data_args, training_args, extra_args = parser.parse_args_into_dataclasses()
     # print(optimizer)
     # Add a custom optimizer argument to the command line
@@ -375,10 +370,6 @@ def train():
         trainer = LisaTrainer(model=model, tokenizer=tokenizer, args=training_args,**data_module)
         alignment_dataset  = SupervisedDataset(tokenizer=tokenizer, data_path="LAT_safe",sample_num=data_args.guide_data_num, poison_data_start=0, poison_ratio=1)
         trainer.init(alignment_dataset)
-    elif training_args.optimizer == "panacea":
-        harmful_dataset  = SupervisedDataset(tokenizer=tokenizer,data_path="LAT_harm", poison_ratio=1,sample_num=data_args.bad_sample_num,benign_dataset=data_args.benign_dataset,poison_data_start=0)
-        trainer = Panacea(model=model, tokenizer=tokenizer, args=training_args ,**data_module)
-        trainer.init(harmful_dataset, model, "eps")
     elif training_args.optimizer == "LDIFS":
         trainer = LDIFSTrainer(model=model, tokenizer=tokenizer, args=training_args ,**data_module) 
         trainer.init(model)
@@ -648,29 +639,6 @@ def train():
     if training_args.track_embedding_drift=="True":
         from utils import calculate_drift2first_embedding
         calculate_drift2first_embedding(extra_args, trainer.get_eval_dataloader(),model)
-        
-    if training_args.optimizer == "panacea":
-        if training_args.system_evaluate =="True":
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-
-        print("add eps:",args.add_eps)
-        print("tag:",args.tag)
-        if args.tag == "eps" and args.add_eps == True:
-            print("start adding eps")
-            epsilon = trainer.get_epsilon()
-            for name, param in model.named_parameters():
-                if param.requires_grad:
-                    param.data += epsilon[name]
-
-        if  training_args.system_evaluate =="True":
-            end_event.record()
-            torch.cuda.synchronize()
-            ont_shot_time = start_event.elapsed_time(end_event)
-            print("Estimated one shot time {} (h)".format(ont_shot_time/ 1000/3600))
-            memory_usage = torch.cuda.memory_reserved()
-            print(f"Memory usage: { memory_usage/ (1024 ** 3):.2f} GB GPU memory used")
 
     
     trainer.save_state()
